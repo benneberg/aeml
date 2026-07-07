@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { engineeringMemory } from "./server/engineeringMemory";
 
 dotenv.config();
 
@@ -138,45 +139,6 @@ const mockAlerts = [
   { id: "a3", type: "COMPLIANCE_HOLD", message: "SQL Injection vulnerabilities parsed in billing queries", timestamp: "2026-07-07T03:30:00Z", repo: "billing-service" }
 ];
 
-// Stores previous review decisions in server memory
-const reviewHistory = [
-  {
-    id: "rev-101",
-    prId: "101",
-    title: "Legacy Billing Gateway update",
-    repo: "billing-service",
-    author: "dan.architect",
-    riskScore: 32,
-    verdict: "APPROVE",
-    timestamp: "2026-07-05T12:00:00Z",
-    executiveSummary: "Architecturally clean. Low production risk. Fully compliant with PCI standards.",
-    backendCTO: { verdict: "APPROVE", reasoning: "Clean separation of controller and logic.", concerns: [], suggestedActions: [], confidence: 95 },
-    securityCTO: { verdict: "APPROVE", reasoning: "Sensitive fields encrypted appropriately.", concerns: [], suggestedActions: [], confidence: 90 },
-    infrastructureCTO: { verdict: "APPROVE", reasoning: "Low performance penalty. Uses cached client.", concerns: [], suggestedActions: [], confidence: 85 },
-    issues: [
-      { file: "billing.ts", line: 42, severity: "LOW", source: "Static Analysis", category: "API Evolution", description: "Deprecated Stripe config argument." }
-    ]
-  },
-  {
-    id: "rev-102",
-    prId: "102",
-    title: "Docker container update",
-    repo: "gateway-router",
-    author: "sara.ops",
-    riskScore: 75,
-    verdict: "BLOCK",
-    timestamp: "2026-07-06T09:40:00Z",
-    executiveSummary: "High resource limits warning. Exposes internal Docker socket container ports directly.",
-    backendCTO: { verdict: "APPROVE", reasoning: "No application changes.", concerns: [], suggestedActions: [], confidence: 90 },
-    securityCTO: { verdict: "BLOCK", reasoning: "Container root socket access exposes host control path.", concerns: ["Docker root socket mounting", "Container security parameters missing"], suggestedActions: ["Avoid mounting docker.sock", "Run container as non-root user"], confidence: 98 },
-    infrastructureCTO: { verdict: "HOLD", reasoning: "Memory limit configuration too low for standard runtime buffer.", concerns: ["OOM risk in Peak workloads"], suggestedActions: ["Set memory limit to at least 512MB"], confidence: 92 },
-    issues: [
-      { file: "Dockerfile", line: 12, severity: "CRITICAL", source: "Security AST", category: "Authentication", description: "Bypasses normal container permission isolation." },
-      { file: "docker-compose.yml", line: 18, severity: "HIGH", source: "Rule Engine", category: "Memory", description: "Unbounded resource usage risk." }
-    ]
-  }
-];
-
 // Helper to calculate risk score from a set of issues
 function calculateRiskScore(issues: any[]) {
   // Severity weightings matching open-spec:
@@ -214,7 +176,25 @@ app.get("/api/alerts", (req, res) => {
 });
 
 app.get("/api/reviews", (req, res) => {
-  res.json(reviewHistory);
+  res.json(engineeringMemory.getAllPastPRs());
+});
+
+app.get("/api/memory", (req, res) => {
+  const { repo } = req.query;
+  if (!repo) {
+    return res.status(400).json({ error: "Missing repo query parameter." });
+  }
+  const context = engineeringMemory.getContext(repo.toString());
+  res.json(context);
+});
+
+app.get("/api/memory/search", (req, res) => {
+  const { q } = req.query;
+  if (!q) {
+    return res.status(400).json({ error: "Missing search query parameter 'q'." });
+  }
+  const results = engineeringMemory.searchMemory(q.toString());
+  res.json(results);
 });
 
 app.get("/api/metrics", (req, res) => {
@@ -257,7 +237,10 @@ app.post("/api/reviews/analyze", async (req, res) => {
     return res.status(400).json({ error: "No git diff or code payload provided for review." });
   }
 
-  // Structure AEML prompt to simulate the 3 distinct CTO roles
+  // Retrieve the contextual engineering memory for this repository
+  const memoryContext = engineeringMemory.formatContextForLLM(prRepo);
+
+  // Structure AEML prompt to simulate the 3 distinct CTO roles with historical Engineering Memory context
   const prompt = `You are the core evaluation engine of the AI Engineering Manager Layer (AEML).
 Analyze the following Git Diff / code change and provide an independent, multi-role review mimicking three senior executives:
 1. Backend CTO (Architecture, scalability, coupling, maintainability, domain modeling, API evolution)
@@ -266,14 +249,22 @@ Analyze the following Git Diff / code change and provide an independent, multi-r
 
 Analyze the code changes rigorously using AST principles and Static Analysis reasoning (be authoritative, looking for actual issues like unverified JWT, raw SQL injection, inflated config values, missing sanitization, inefficient loops, resource leakage).
 
-Here is the Git Diff:
+Here is the Git Diff to inspect:
 ---
 ${diffToAnalyze}
 ---
 
+${memoryContext}
+
+Evaluate this pull request in the context of the historical Engineering Governance Memory provided above.
+- Specifically verify if this PR violates any active Architectural Decisions (ADRs). For example, if a billing-service change utilizes direct SQL string concatenation, that is a violation of ADR-11.
+- Check if this code re-introduces any bugs/vulnerabilities that led to past recorded incident reports for this microservice. For example, if an auth-service change bypasses verification in dev, that re-introduces INCIDENT-AUTH-09.
+- Ensure the changes are aligned with the owner team and dependency expectations for the service.
+
 Your response MUST match the requested JSON format exactly. Ensure all JSON fields are complete and represent realistic engineering verdicts: "APPROVE", "HOLD", or "BLOCK" depending on severity.
-If a security issue like "bypass JWT crypt" is present, it MUST trigger a "BLOCK" verdict from Security CTO.
-If a huge connection pool size or raw SQL injection is found, it must trigger "BLOCK" or "HOLD" with high-risk issues.`;
+If an ADR rule is violated (like using direct SQL concatenation in billing-service when ADR-11 bans it) or if a security bypass is present, you MUST trigger a "BLOCK" verdict.
+If an incident regression is found (like a development-only JWT verification bypass in auth-service as occurred in INCIDENT-AUTH-09), you MUST trigger a "BLOCK" verdict.
+If a connection pool is set to 500 when ADR-25 caps it at 50, you MUST trigger a "BLOCK" or "HOLD" verdict.`;
 
   try {
     let resultJSON: any;
@@ -493,7 +484,7 @@ If a huge connection pool size or raw SQL injection is found, it must trigger "B
     // Any BLOCK -> BLOCK
     // Else any HOLD -> HOLD
     // Else APPROVE
-    let finalVerdict = "APPROVE";
+    let finalVerdict: "APPROVE" | "HOLD" | "BLOCK" = "APPROVE";
     const reviews = [resultJSON.backendCTO, resultJSON.securityCTO, resultJSON.infrastructureCTO];
     
     if (reviews.some(r => r.verdict === "BLOCK")) {
@@ -522,7 +513,7 @@ If a huge connection pool size or raw SQL injection is found, it must trigger "B
     };
 
     // Store in review history memory
-    reviewHistory.unshift(generatedReview);
+    engineeringMemory.recordPR(generatedReview);
 
     // Update PR status in list
     if (prId) {

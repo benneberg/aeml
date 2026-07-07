@@ -23,13 +23,27 @@ interface HistoryViewProps {
 export default function HistoryView({ history }: HistoryViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAudit, setSelectedAudit] = useState<PullRequestDecision | null>(null);
+  const [verdictFilter, setVerdictFilter] = useState<"ALL" | "APPROVE" | "HOLD" | "BLOCK">("ALL");
 
-  // Search filter
+  // Search and status filter
   const filteredHistory = history.filter(
-    h => 
-      h.repo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      h.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      h.author.toLowerCase().includes(searchTerm.toLowerCase())
+    h => {
+      const matchesSearch = 
+        h.repo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        h.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        h.author.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      if (verdictFilter === "ALL") return matchesSearch;
+      
+      const normalizedVerdict = h.verdict?.toUpperCase();
+      if (verdictFilter === "APPROVE") {
+        return matchesSearch && (normalizedVerdict === "APPROVE" || normalizedVerdict === "APPROVED");
+      }
+      if (verdictFilter === "BLOCK") {
+        return matchesSearch && (normalizedVerdict === "BLOCK" || normalizedVerdict === "BLOCKED");
+      }
+      return matchesSearch && normalizedVerdict === verdictFilter;
+    }
   );
 
   const getVerdictStyle = (verdict: string) => {
@@ -69,6 +83,29 @@ export default function HistoryView({ history }: HistoryViewProps) {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full bg-white border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs font-sans text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
         />
+      </div>
+
+      {/* Verdict Filters */}
+      <div className="flex space-x-1.5 py-1" id="history-verdict-filters">
+        {(["ALL", "APPROVE", "HOLD", "BLOCK"] as const).map((filter) => {
+          const isActive = verdictFilter === filter;
+          let activeClass = "bg-slate-800 text-white border-slate-800";
+          if (filter === "APPROVE") activeClass = "bg-emerald-600 text-white border-emerald-600";
+          else if (filter === "HOLD") activeClass = "bg-amber-500 text-white border-amber-500";
+          else if (filter === "BLOCK") activeClass = "bg-rose-600 text-white border-rose-600";
+
+          return (
+            <button
+              key={filter}
+              onClick={() => setVerdictFilter(filter)}
+              className={`text-[10px] font-bold font-mono px-3 py-1.5 rounded-lg border transition-all ${
+                isActive ? activeClass : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {filter === "ALL" ? "ALL" : filter === "APPROVE" ? "APPROVED" : filter === "HOLD" ? "HOLD" : "BLOCKED"}
+            </button>
+          );
+        })}
       </div>
 
       {/* History Stream */}
