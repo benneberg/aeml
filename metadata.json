@@ -1,0 +1,6 @@
+{
+  "name": "AI Engineering Manager Layer",
+  "description": "Mobile-first software engineering management platform that evaluates code changes using role-based AI reviewers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
