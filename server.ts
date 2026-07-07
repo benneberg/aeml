@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { engineeringMemory } from "./server/engineeringMemory";
+import { roleReviewEngine } from "./server/roleReviewEngine";
 
 dotenv.config();
 
@@ -237,255 +238,15 @@ app.post("/api/reviews/analyze", async (req, res) => {
     return res.status(400).json({ error: "No git diff or code payload provided for review." });
   }
 
-  // Retrieve the contextual engineering memory for this repository
-  const memoryContext = engineeringMemory.formatContextForLLM(prRepo);
-
-  // Structure AEML prompt to simulate the 3 distinct CTO roles with historical Engineering Memory context
-  const prompt = `You are the core evaluation engine of the AI Engineering Manager Layer (AEML).
-Analyze the following Git Diff / code change and provide an independent, multi-role review mimicking three senior executives:
-1. Backend CTO (Architecture, scalability, coupling, maintainability, domain modeling, API evolution)
-2. Security CTO (Authentication, authorization, secrets, injection, compliance, compliance risks)
-3. Infrastructure CTO (Performance, runtime cost, memory, CPU, scalability, failure modes)
-
-Analyze the code changes rigorously using AST principles and Static Analysis reasoning (be authoritative, looking for actual issues like unverified JWT, raw SQL injection, inflated config values, missing sanitization, inefficient loops, resource leakage).
-
-Here is the Git Diff to inspect:
----
-${diffToAnalyze}
----
-
-${memoryContext}
-
-Evaluate this pull request in the context of the historical Engineering Governance Memory provided above.
-- Specifically verify if this PR violates any active Architectural Decisions (ADRs). For example, if a billing-service change utilizes direct SQL string concatenation, that is a violation of ADR-11.
-- Check if this code re-introduces any bugs/vulnerabilities that led to past recorded incident reports for this microservice. For example, if an auth-service change bypasses verification in dev, that re-introduces INCIDENT-AUTH-09.
-- Ensure the changes are aligned with the owner team and dependency expectations for the service.
-
-Your response MUST match the requested JSON format exactly. Ensure all JSON fields are complete and represent realistic engineering verdicts: "APPROVE", "HOLD", or "BLOCK" depending on severity.
-If an ADR rule is violated (like using direct SQL concatenation in billing-service when ADR-11 bans it) or if a security bypass is present, you MUST trigger a "BLOCK" verdict.
-If an incident regression is found (like a development-only JWT verification bypass in auth-service as occurred in INCIDENT-AUTH-09), you MUST trigger a "BLOCK" verdict.
-If a connection pool is set to 500 when ADR-25 caps it at 50, you MUST trigger a "BLOCK" or "HOLD" verdict.`;
-
   try {
-    let resultJSON: any;
-
-    if (ai) {
-      // Modern @google/genai SDK implementation with responseSchema
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: "You are the AI Engineering Manager Layer (AEML) Core Analyzer. Your judgments must be highly professional, detailed, objective, and represent the actual production risk based on senior-level criteria.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              backendCTO: {
-                type: Type.OBJECT,
-                properties: {
-                  verdict: { type: Type.STRING, description: "Must be 'APPROVE', 'HOLD', or 'BLOCK'" },
-                  reasoning: { type: Type.STRING },
-                  concerns: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  suggestedActions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["verdict", "reasoning", "concerns", "suggestedActions", "confidence"]
-              },
-              securityCTO: {
-                type: Type.OBJECT,
-                properties: {
-                  verdict: { type: Type.STRING, description: "Must be 'APPROVE', 'HOLD', or 'BLOCK'" },
-                  reasoning: { type: Type.STRING },
-                  concerns: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  suggestedActions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["verdict", "reasoning", "concerns", "suggestedActions", "confidence"]
-              },
-              infrastructureCTO: {
-                type: Type.OBJECT,
-                properties: {
-                  verdict: { type: Type.STRING, description: "Must be 'APPROVE', 'HOLD', or 'BLOCK'" },
-                  reasoning: { type: Type.STRING },
-                  concerns: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  suggestedActions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["verdict", "reasoning", "concerns", "suggestedActions", "confidence"]
-              },
-              issues: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    file: { type: Type.STRING },
-                    line: { type: Type.INTEGER },
-                    severity: { type: Type.STRING, description: "Must be 'LOW', 'MEDIUM', 'HIGH', or 'CRITICAL'" },
-                    source: { type: Type.STRING, description: "E.g., 'Static Analysis', 'AST Analyzer', 'Security AST'" },
-                    category: { type: Type.STRING, description: "E.g., 'Authentication', 'Performance', 'Memory', 'API Evolution', 'Architecture'" },
-                    description: { type: Type.STRING }
-                  },
-                  required: ["file", "line", "severity", "source", "category", "description"]
-                }
-              },
-              executiveSummary: { type: Type.STRING }
-            },
-            required: ["backendCTO", "securityCTO", "infrastructureCTO", "issues", "executiveSummary"]
-          }
-        }
-      });
-
-      const responseText = response.text || "{}";
-      resultJSON = JSON.parse(responseText.trim());
-    } else {
-      // Fallback Simulator: executes high-quality static parsing if Gemini key is not configured or offline
-      console.log("AEML: Simulating AEML decision logic based on code patterns...");
-      
-      const lowercaseDiff = diffToAnalyze.toLowerCase();
-      let detectedIssues = [];
-      
-      let backendVerdict = "APPROVE";
-      let securityVerdict = "APPROVE";
-      let infraVerdict = "APPROVE";
-
-      let backendConcerns: string[] = [];
-      let securityConcerns: string[] = [];
-      let infraConcerns: string[] = [];
-
-      let backendActions: string[] = [];
-      let securityActions: string[] = [];
-      let infraActions: string[] = [];
-
-      // Token bypass pattern matching (specifically present in PR #104)
-      if (lowercaseDiff.includes("jwt.decode") || lowercaseDiff.includes("bypass") || lowercaseDiff.includes("process.env.node_env === 'development'")) {
-        securityVerdict = "BLOCK";
-        securityConcerns.push("Vulnerability: JWT cryptographic signature bypass in development mode.");
-        securityConcerns.push("Risk of malicious query-string token fallback parameter injects.");
-        securityActions.push("Perform full cryptographic validations even in development workloads using symmetric or mocked asymmetric certs.");
-        securityActions.push("Enforce strict authorization schemes, stripping query token parameters.");
-        
-        detectedIssues.push({
-          file: "src/middleware/auth.ts",
-          line: 20,
-          severity: "CRITICAL",
-          source: "Security AST",
-          category: "Authentication",
-          description: "Cryptographic signature validation is bypassed when NODE_ENV is set to development. This could lead to token forging in test instances."
-        });
-        
-        detectedIssues.push({
-          file: "src/middleware/auth.ts",
-          line: 12,
-          severity: "HIGH",
-          source: "Static Analysis",
-          category: "Authentication",
-          description: "Exposes authentication token verification parameters via fallback HTTP Query string parameters, risking log leakage."
-        });
-      }
-
-      // Inflated connections pattern matching (specifically present in PR #212)
-      if (lowercaseDiff.includes("max: 500") || lowercaseDiff.includes("pool") || lowercaseDiff.includes("select * from invoices")) {
-        infraVerdict = "BLOCK";
-        infraConcerns.push("Database pool inflated abruptly to 500 connections (potential thread starvation and server socket exhaust).");
-        infraConcerns.push("OOM hazards from non-paginated invoice fetches ('SELECT * FROM invoices WHERE user_id').");
-        infraActions.push("Scale connections horizontally or utilize a proxy layer like PgBouncer instead of inflating thread pool directly.");
-        infraActions.push("Enforce LIMIT constraints and verify query is using the userId index.");
-
-        backendVerdict = "HOLD";
-        backendConcerns.push("Domain boundary coupling issues with raw string SQL concatenation ('+ userId').");
-        backendActions.push("Adopt parameter binding to prevent SQL Injection risks.");
-
-        detectedIssues.push({
-          file: "src/db/pool.ts",
-          line: 8,
-          severity: "HIGH",
-          source: "Rule Engine",
-          category: "Performance",
-          description: "Database connection pool scale inflated from 20 to 500 connections. Risky for downstream container processes."
-        });
-
-        detectedIssues.push({
-          file: "src/db/pool.ts",
-          line: 13,
-          severity: "CRITICAL",
-          source: "AST Analyzer",
-          category: "Architecture",
-          description: "SQL Injection vulnerability via unsanitized query parameters concatenation ('+ userId'). Use parameter binding."
-        });
-
-        detectedIssues.push({
-          file: "src/db/pool.ts",
-          line: 14,
-          severity: "MEDIUM",
-          source: "Static Analysis",
-          category: "Memory",
-          description: "Unbounded query fetches all invoices sequentially. This will degrade memory performance during peak user audits."
-        });
-      }
-
-      // Notification Hub simple queue pattern matching
-      if (lowercaseDiff.includes("alerts-queue") || lowercaseDiff.includes("dispatch")) {
-        detectedIssues.push({
-          file: "src/dispatch.ts",
-          line: 5,
-          severity: "LOW",
-          source: "Static Analysis",
-          category: "API Evolution",
-          description: "Queue payload serialized to raw string. Consider using typed schema envelopes."
-        });
-      }
-
-      if (detectedIssues.length === 0) {
-        // Safe, clean code
-        detectedIssues.push({
-          file: "src/index.ts",
-          line: 1,
-          severity: "LOW",
-          source: "Static Analysis",
-          category: "Architecture",
-          description: "Static code inspection successfully completed. No blocking vulnerabilities or architectural anti-patterns found."
-        });
-      }
-
-      // Build synthesized reasoning
-      let executiveSummary = "Architectural review finished successfully. Code has been inspected across Backend, Security, and Infrastructure metrics.";
-      if (securityVerdict === "BLOCK" || infraVerdict === "BLOCK") {
-        executiveSummary = "BLOCK: High-risk policy violations and potential runtime crashes detected. Cryptographic bypass mechanisms or unstable database pooling scales require hotfixes before merging.";
-      }
-
-      resultJSON = {
-        backendCTO: {
-          verdict: backendVerdict,
-          reasoning: backendVerdict === "APPROVE" ? "Code changes present no major coupling risks or architecture shifts." : "Domain separation boundaries are degraded. Relational data fetches bypass parameterized standards.",
-          concerns: backendConcerns,
-          suggestedActions: backendActions,
-          confidence: 88
-        },
-        securityCTO: {
-          verdict: securityVerdict,
-          reasoning: securityVerdict === "APPROVE" ? "No sensitive credentials or cryptographic bypass structures detected." : "Critical risk identified. Developer is bypassing normal token verification paths based on active container environment variables.",
-          concerns: securityConcerns,
-          suggestedActions: securityActions,
-          confidence: 95
-        },
-        infrastructureCTO: {
-          verdict: infraVerdict,
-          reasoning: infraVerdict === "APPROVE" ? "Memory footprint and processor allocations are within normal thresholds." : "Runtime resource scale parameters are configured dangerously high. SQL operations run without pagination or indexes.",
-          concerns: infraConcerns,
-          suggestedActions: infraActions,
-          confidence: 90
-        },
-        issues: detectedIssues,
-        executiveSummary
-      };
-    }
+    const analysisResult = await roleReviewEngine.reviewPullRequest(ai, diffToAnalyze, prRepo);
 
     // Synthesize final outcome according to specification's priority rules:
     // Any BLOCK -> BLOCK
     // Else any HOLD -> HOLD
     // Else APPROVE
     let finalVerdict: "APPROVE" | "HOLD" | "BLOCK" = "APPROVE";
-    const reviews = [resultJSON.backendCTO, resultJSON.securityCTO, resultJSON.infrastructureCTO];
+    const reviews = [analysisResult.backendCTO, analysisResult.securityCTO, analysisResult.infrastructureCTO];
     
     if (reviews.some(r => r.verdict === "BLOCK")) {
       finalVerdict = "BLOCK";
@@ -494,7 +255,7 @@ If a connection pool is set to 500 when ADR-25 caps it at 50, you MUST trigger a
     }
 
     // Calculate normalized risk score based on the issues found
-    const calculatedScore = calculateRiskScore(resultJSON.issues);
+    const calculatedScore = calculateRiskScore(analysisResult.issues);
 
     const generatedReview = {
       id: "rev-" + Date.now().toString().slice(-6),
@@ -505,11 +266,11 @@ If a connection pool is set to 500 when ADR-25 caps it at 50, you MUST trigger a
       riskScore: calculatedScore,
       verdict: finalVerdict,
       timestamp: new Date().toISOString(),
-      executiveSummary: resultJSON.executiveSummary,
-      backendCTO: resultJSON.backendCTO,
-      securityCTO: resultJSON.securityCTO,
-      infrastructureCTO: resultJSON.infrastructureCTO,
-      issues: resultJSON.issues
+      executiveSummary: analysisResult.executiveSummary,
+      backendCTO: analysisResult.backendCTO,
+      securityCTO: analysisResult.securityCTO,
+      infrastructureCTO: analysisResult.infrastructureCTO,
+      issues: analysisResult.issues
     };
 
     // Store in review history memory
