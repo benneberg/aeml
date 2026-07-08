@@ -15,6 +15,8 @@ import PullRequestView from "./components/PullRequestView";
 import HistoryView from "./components/HistoryView";
 import SpecView from "./components/SpecView";
 import { Repository, PullRequest, PullRequestDecision, SystemAlert, ExecutiveMetrics } from "./types";
+// @ts-ignore
+import aemlLogo from "./assets/images/aeml_logo_1783466577231.jpg";
 
 export default function App() {
   // Mobile app tabs
@@ -141,12 +143,17 @@ export default function App() {
         {/* Dynamic Global Top Navigation Bar */}
         <header className="bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between shrink-0 z-10 shadow-3xs" id="app-header">
           <div className="flex items-center space-x-2">
-            <span className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs flex items-center justify-center">
-              <ShieldCheck className="h-5 w-5" />
-            </span>
+            <div className="h-8 w-8 rounded-lg overflow-hidden border border-slate-100 shadow-xs flex items-center justify-center bg-slate-50 relative shrink-0">
+              <img 
+                src={aemlLogo} 
+                alt="AEML Governance Logo" 
+                className="h-full w-full object-cover"
+                referrerPolicy="no-referrer" 
+              />
+            </div>
             <div>
-              <h1 className="text-sm font-extrabold text-slate-900 tracking-tight leading-none uppercase">
-                AEML Governance
+              <h1 className="text-sm font-extrabold text-slate-900 tracking-tight leading-none uppercase flex items-center space-x-1">
+                <span>AEML Governance</span>
               </h1>
               <span className="text-[9px] text-slate-400 font-mono">Simulated Org Manager</span>
             </div>
