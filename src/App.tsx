@@ -8,7 +8,9 @@ import {
   Bell, 
   Activity, 
   Compass,
-  Laptop
+  Laptop,
+  Sun,
+  Moon
 } from "lucide-react";
 import DashboardView from "./components/DashboardView";
 import PullRequestView from "./components/PullRequestView";
@@ -22,12 +24,23 @@ export default function App() {
   // Mobile app tabs
   const [activeTab, setActiveTab] = useState<"dashboard" | "reviews" | "history" | "spec">("dashboard");
 
+  // Dark Mode global state
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+
   // Core domain states
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [reviewHistory, setReviewHistory] = useState<PullRequestDecision[]>([]);
   const [metrics, setMetrics] = useState<ExecutiveMetrics | null>(null);
+
+  // Global configurable weights state
+  const [severityWeights, setSeverityWeights] = useState({ LOW: 3, MEDIUM: 10, HIGH: 20, CRITICAL: 40 });
+
+  // Pagination states
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit] = useState(5);
+  const [historyPagination, setHistoryPagination] = useState<{ page: number; limit: number; total: number; totalPages: number } | undefined>(undefined);
 
   // Loading and analysis states
   const [loading, setLoading] = useState(true);
@@ -37,29 +50,61 @@ export default function App() {
   // Error logging state
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Fetch paginated history
+  const fetchPaginatedHistory = async (page: number) => {
+    try {
+      const res = await fetch(`/api/reviews?page=${page}&limit=${historyLimit}`);
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload && payload.data) {
+          setReviewHistory(payload.data);
+          setHistoryPagination({
+            page: payload.page,
+            limit: payload.limit,
+            total: payload.total,
+            totalPages: payload.totalPages
+          });
+          setHistoryPage(payload.page);
+        } else {
+          setReviewHistory(payload);
+          setHistoryPagination(undefined);
+        }
+      }
+    } catch (err) {
+      console.error("AEML: Failed to fetch paginated reviews: ", err);
+    }
+  };
+
   // Fetch initial organizational context from AEML backend APIs
   const fetchAllContext = async () => {
     try {
       setLoading(true);
-      const [reposRes, prsRes, alertsRes, reviewsRes, metricsRes] = await Promise.all([
+      const [reposRes, prsRes, alertsRes, metricsRes, configRes] = await Promise.all([
         fetch("/api/repositories"),
         fetch("/api/pull-requests"),
         fetch("/api/alerts"),
-        fetch("/api/reviews"),
-        fetch("/api/metrics")
+        fetch("/api/metrics"),
+        fetch("/api/config")
       ]);
 
       const repos = await reposRes.json();
       const prList = await prsRes.json();
       const alertList = await alertsRes.json();
-      const reviewHistoryList = await reviewsRes.json();
       const metricList = await metricsRes.json();
+      const configData = await configRes.json();
 
       setRepositories(repos);
       setPrs(prList);
       setAlerts(alertList);
-      setReviewHistory(reviewHistoryList);
       setMetrics(metricList);
+
+      if (configData && configData.globalSeverityWeights) {
+        setSeverityWeights(configData.globalSeverityWeights);
+      }
+
+      // Load first page of history
+      await fetchPaginatedHistory(1);
+
       setErrorMessage(null);
     } catch (err) {
       console.error("AEML: Failed to retrieve contextual APIs: ", err);
@@ -72,6 +117,31 @@ export default function App() {
   useEffect(() => {
     fetchAllContext();
   }, []);
+
+  // Update dynamic weights handler
+  const handleUpdateWeights = async (newWeights: any) => {
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ globalSeverityWeights: newWeights })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.globalSeverityWeights) {
+          setSeverityWeights(data.globalSeverityWeights);
+        }
+        // Refresh metrics as they depend on the dynamic weights!
+        const metricsRes = await fetch("/api/metrics");
+        setMetrics(await metricsRes.json());
+      } else {
+        throw new Error(await res.text());
+      }
+    } catch (err: any) {
+      console.error("AEML: Failed to save dynamic weights: ", err);
+      alert("Failed to save weights: " + (err.message || err));
+    }
+  };
 
   // Launch role reviewer analysis on target Pull Request (called when a PR is opened)
   const handleTriggerAnalysis = async (prId: string) => {
@@ -89,9 +159,8 @@ export default function App() {
       setActiveAnalysis(data);
 
       // Re-trigger metric and history fetches to keep UI completely in-sync
-      const historyRes = await fetch("/api/reviews");
+      await fetchPaginatedHistory(historyPage);
       const metricsRes = await fetch("/api/metrics");
-      setReviewHistory(await historyRes.json());
       setMetrics(await metricsRes.json());
     } catch (err: any) {
       console.error("AEML Analysis Error: ", err);
@@ -117,9 +186,8 @@ export default function App() {
       setActiveAnalysis(data);
 
       // Refresh standard historical listings
-      const historyRes = await fetch("/api/reviews");
+      await fetchPaginatedHistory(1);
       const metricsRes = await fetch("/api/metrics");
-      setReviewHistory(await historyRes.json());
       setMetrics(await metricsRes.json());
     } catch (err: any) {
       console.error("AEML Custom Analysis Error: ", err);
@@ -130,10 +198,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900/10 flex items-center justify-center font-sans py-0 md:py-8" id="root-viewport">
+    <div className={`min-h-screen ${darkMode ? "bg-slate-950" : "bg-slate-900/10"} flex items-center justify-center font-sans py-0 md:py-8 transition-colors duration-300`} id="root-viewport">
       
       {/* Premium Desktop Mock Mobile Shell Container wrapper */}
-      <div className="w-full max-w-[440px] h-[100vh] md:h-[840px] bg-slate-50 md:rounded-[40px] md:shadow-2xl border-0 md:border-[10px] border-slate-900 overflow-hidden flex flex-col relative" id="mobile-shell">
+      <div className={`w-full max-w-[440px] h-[100vh] md:h-[840px] ${darkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50"} md:rounded-[40px] md:shadow-2xl border-0 md:border-[10px] border-slate-900 overflow-hidden flex flex-col relative`} id="mobile-shell">
         
         {/* iOS Dynamic Status Notch Accent (visible only in desktop wrappers) */}
         <div className="hidden md:flex bg-slate-900 h-6 items-center justify-center relative shrink-0 z-50">
@@ -141,7 +209,7 @@ export default function App() {
         </div>
 
         {/* Dynamic Global Top Navigation Bar */}
-        <header className="bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between shrink-0 z-10 shadow-3xs" id="app-header">
+        <header className={`${darkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-white border-slate-100"} px-5 py-3.5 flex items-center justify-between shrink-0 z-10 shadow-3xs`} id="app-header">
           <div className="flex items-center space-x-2">
             <div className="h-8 w-8 rounded-lg overflow-hidden border border-slate-100 shadow-xs flex items-center justify-center bg-slate-50 relative shrink-0">
               <img 
@@ -152,23 +220,36 @@ export default function App() {
               />
             </div>
             <div>
-              <h1 className="text-sm font-extrabold text-slate-900 tracking-tight leading-none uppercase flex items-center space-x-1">
+              <h1 className={`text-sm font-extrabold ${darkMode ? "text-white" : "text-slate-900"} tracking-tight leading-none uppercase flex items-center space-x-1`}>
                 <span>AEML Governance</span>
               </h1>
-              <span className="text-[9px] text-slate-400 font-mono">Simulated Org Manager</span>
+              <span className={`text-[9px] ${darkMode ? "text-slate-500" : "text-slate-400"} font-mono`}>Simulated Org Manager</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1.5">
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              className={`p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer ${
+                darkMode ? "hover:bg-slate-800 text-amber-400" : "hover:bg-slate-100 text-slate-500"
+              }`}
+            >
+              {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             <button 
               onClick={fetchAllContext}
               title="Synchronize Governance APIs"
-              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-all flex items-center justify-center"
+              className={`p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer ${
+                darkMode ? "hover:bg-slate-800 text-indigo-400" : "hover:bg-slate-100 text-slate-500"
+              }`}
             >
               <Activity className="h-4 w-4" />
             </button>
             <div className="relative">
-              <span className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-all flex items-center justify-center">
+              <span className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${
+                darkMode ? "text-slate-400" : "text-slate-500"
+              }`}>
                 <Bell className="h-4 w-4" />
               </span>
               {alerts.length > 0 && (
@@ -179,7 +260,7 @@ export default function App() {
         </header>
 
         {/* Primary Content Container */}
-        <main className="flex-1 overflow-y-auto px-5 py-4 bg-slate-50/50 relative scroll-smooth" id="app-content">
+        <main className={`flex-1 overflow-y-auto px-5 py-4 ${darkMode ? "bg-slate-950" : "bg-slate-50/50"} relative scroll-smooth`} id="app-content">
           
           {errorMessage && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs font-medium mb-4" id="global-error">
@@ -200,6 +281,7 @@ export default function App() {
                   alerts={alerts}
                   onSelectPR={() => setActiveTab("reviews")}
                   activeTab={activeTab}
+                  darkMode={darkMode}
                 />
               )}
 
@@ -211,29 +293,39 @@ export default function App() {
                   analysisResult={activeAnalysis}
                   loadingPrId={loadingPrId}
                   onBackToDashboard={() => setActiveTab("dashboard")}
+                  darkMode={darkMode}
                 />
               )}
 
               {activeTab === "history" && (
                 <HistoryView 
                   history={reviewHistory}
+                  pagination={historyPagination}
+                  onPageChange={fetchPaginatedHistory}
+                  darkMode={darkMode}
                 />
               )}
 
               {activeTab === "spec" && (
-                <SpecView />
+                <SpecView 
+                  severityWeights={severityWeights}
+                  onUpdateWeights={handleUpdateWeights}
+                  darkMode={darkMode}
+                />
               )}
             </>
           )}
         </main>
 
         {/* Global Bottom Navigation Tab Bar */}
-        <nav className="bg-white border-t border-slate-100 px-4 py-2 flex justify-between items-center shrink-0 shadow-md pb-4 md:pb-3" id="app-navigation">
+        <nav className={`${darkMode ? "bg-slate-950 border-slate-800" : "bg-white border-slate-100"} px-4 py-2 flex justify-between items-center shrink-0 shadow-md pb-4 md:pb-3`} id="app-navigation">
           
           <button 
             onClick={() => setActiveTab("dashboard")}
-            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all ${
-              activeTab === "dashboard" ? "text-indigo-600" : "text-slate-400 hover:text-slate-700"
+            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all cursor-pointer ${
+              activeTab === "dashboard" 
+                ? "text-indigo-500" 
+                : (darkMode ? "text-slate-500 hover:text-slate-350" : "text-slate-400 hover:text-slate-700")
             }`}
           >
             <Layers className="h-5 w-5" />
@@ -242,8 +334,10 @@ export default function App() {
 
           <button 
             onClick={() => setActiveTab("reviews")}
-            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all relative ${
-              activeTab === "reviews" ? "text-indigo-600" : "text-slate-400 hover:text-slate-700"
+            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all relative cursor-pointer ${
+              activeTab === "reviews" 
+                ? "text-indigo-500" 
+                : (darkMode ? "text-slate-500 hover:text-slate-350" : "text-slate-400 hover:text-slate-700")
             }`}
           >
             <GitPullRequest className="h-5 w-5" />
@@ -257,8 +351,10 @@ export default function App() {
 
           <button 
             onClick={() => setActiveTab("history")}
-            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all ${
-              activeTab === "history" ? "text-indigo-600" : "text-slate-400 hover:text-slate-700"
+            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all cursor-pointer ${
+              activeTab === "history" 
+                ? "text-indigo-500" 
+                : (darkMode ? "text-slate-500 hover:text-slate-350" : "text-slate-400 hover:text-slate-700")
             }`}
           >
             <HistoryIcon className="h-5 w-5" />
@@ -267,8 +363,10 @@ export default function App() {
 
           <button 
             onClick={() => setActiveTab("spec")}
-            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all ${
-              activeTab === "spec" ? "text-indigo-600" : "text-slate-400 hover:text-slate-700"
+            className={`flex flex-col items-center space-y-0.5 flex-1 py-1 transition-all cursor-pointer ${
+              activeTab === "spec" 
+                ? "text-indigo-500" 
+                : (darkMode ? "text-slate-500 hover:text-slate-350" : "text-slate-400 hover:text-slate-700")
             }`}
           >
             <FileText className="h-5 w-5" />
@@ -278,8 +376,8 @@ export default function App() {
         </nav>
 
         {/* iOS Home Indicator Bar Accent */}
-        <div className="hidden md:block bg-white h-3 pb-2 shrink-0 z-20">
-          <div className="w-32 h-1 bg-slate-300 rounded-full mx-auto"></div>
+        <div className={`hidden md:block ${darkMode ? "bg-slate-950" : "bg-white"} h-3 pb-2 shrink-0 z-20`}>
+          <div className="w-32 h-1 bg-slate-700 rounded-full mx-auto"></div>
         </div>
 
       </div>

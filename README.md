@@ -1,44 +1,46 @@
 # AI Engineering Manager Layer (AEML)
 
-A mobile-first engineering management and governance platform that evaluates code changes using structured reasoning, static analysis, organizational knowledge, and role-based AI reviewers.
+AEML is an enterprise-grade engineering governance platform designed to simulate a senior engineering leadership organization. It evaluates pull requests and code changes against static patterns, architectural decisions (ADRs), and past incident history using a mixture of Gemini-powered multi-role reviews and local AST static heuristics.
 
-## Core Concepts
+---
 
-AEML simulates a senior engineering leadership organization that reviews pull requests. Rather than focusing on simple syntax issues or styling, it evaluates:
-1. **Should this PR be merged?**
-2. **What is the production and deployment risk?**
-3. **Which engineering discipline would object?** (e.g., Backend, Security, Infrastructure)
-4. **What long-term technical debt is introduced?**
-5. **What organizational policies must be satisfied?**
+## Getting Started
 
-## Features
-
-- **Role-Based AI Reviews**: Simulates Backend CTO, Security CTO, and Infrastructure CTO reviews independently.
-- **Diff Analyzer & Parser**: Allows entering custom code diffs or selecting predefined examples to trigger real-time, server-side Gemini API-powered reviews.
-- **Risk Score Calculator**: Normalizes low, medium, high, and critical issues to a 0–100 score.
-- **Decision Synthesizer**: Implements the specification's priority rules (any `BLOCK` results in a BLOCK verdict; any `HOLD` results in HOLD; otherwise `APPROVE`).
-- **Interactive Mobile Dashboard**: View engineering health, repository health, risk trends, alert logs, and previous review history.
-
-## Development Setup
-
-The application is built on a full-stack architecture using **React (Vite)** on the frontend and an **Express** server on the backend to securely call the Gemini API.
-
-### Installation
-Ensure that the dependencies are installed and the server is configured:
-
+### 1. Installation
+Install project dependencies from the root directory:
 ```bash
 npm install
 ```
 
-### Running the Application
-To launch the full-stack developer server:
+### 2. Run the Development Server
+Launch the application with the fast-reloading TypeScript engine:
 ```bash
 npm run dev
 ```
-The server binds to port `3000` as required by the reverse proxy.
+The server will boot and bind to port `3000` on host `0.0.0.0` as required.
 
-## Implementation Details
+### 3. Build & Production Deployment
+Compile frontend and backend assets for distribution:
+```bash
+npm run build
+```
+This performs a production build of the Vite client (saving assets in `dist/`) and packages the Express backend into a bundled, stand-alone script (`dist/server.cjs`) with sourcemap tracking.
 
-- **Backend**: Serves compiled client files in production and proxies requests to the Gemini API securely using the modern `@google/genai` SDK on the server-side (`server.ts`).
-- **Frontend**: A high-fidelity, responsive, mobile-first design with smooth state transitions, rich charts (Recharts) for executive dashboards, detailed review timelines, and interactive role panels.
-- **Persistence**: Emulates persistent organization memory on the server for tracking previous reviews and repository alert trends.
+To launch the compiled server:
+```bash
+npm start
+```
+
+---
+
+## Structural Architecture
+- **Client App (`src/App.tsx`)**: Responsive, mobile-first design styled using Tailwind CSS and structured into a high-fidelity iOS hardware simulator frame.
+- **Role Review Engine (`server/roleReviewEngine.ts`)**: Defines structured validation prompt schemas for the Backend, Security, and Infrastructure CTO AI personas.
+- **Governance Database (`server/engineeringMemory.ts`)**: Simulates a persistence service containing historical company policies, ADR logs, and incident databases.
+
+---
+
+## Main Features
+- **Deterministic Verdict Synthesis**: Applies logical gates: any `BLOCK` results in a BLOCK verdict; any `HOLD` results in a HOLD; otherwise, a code change is `APPROVED`.
+- **Seamless Gemini Failover**: Detects when the `GEMINI_API_KEY` is missing and launches high-fidelity AST heuristic analyzers to perform offline audits.
+- **Real-Time Memory Search**: Includes a real-time semantic query interface for searching governance policies and historical engineering notes.

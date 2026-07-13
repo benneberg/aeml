@@ -16,7 +16,13 @@ import {
   Search
 } from "lucide-react";
 
-export default function SpecView() {
+interface SpecViewProps {
+  severityWeights: { LOW: number; MEDIUM: number; HIGH: number; CRITICAL: number };
+  onUpdateWeights: (weights: any) => Promise<void>;
+  darkMode?: boolean;
+}
+
+export default function SpecView({ severityWeights, onUpdateWeights, darkMode = false }: SpecViewProps) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedFilter, setSelectedFilter] = React.useState<"all" | "adr" | "incident" | "ownership">("all");
   const [results, setResults] = React.useState<{ matchedPRs: any[]; matchedIncidents: any[]; matchedAdrs: any[] }>({
@@ -25,6 +31,33 @@ export default function SpecView() {
     matchedAdrs: []
   });
   const [loading, setLoading] = React.useState(false);
+
+  // Dynamic weights states
+  const [lowWeight, setLowWeight] = React.useState(severityWeights.LOW);
+  const [mediumWeight, setMediumWeight] = React.useState(severityWeights.MEDIUM);
+  const [highWeight, setHighWeight] = React.useState(severityWeights.HIGH);
+  const [criticalWeight, setCriticalWeight] = React.useState(severityWeights.CRITICAL);
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  // Sync state if props change
+  React.useEffect(() => {
+    setLowWeight(severityWeights.LOW);
+    setMediumWeight(severityWeights.MEDIUM);
+    setHighWeight(severityWeights.HIGH);
+    setCriticalWeight(severityWeights.CRITICAL);
+  }, [severityWeights]);
+
+  const handleSaveWeights = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    await onUpdateWeights({
+      LOW: lowWeight,
+      MEDIUM: mediumWeight,
+      HIGH: highWeight,
+      CRITICAL: criticalWeight
+    });
+    setIsSaving(false);
+  };
 
   React.useEffect(() => {
     const fetchMemory = async () => {
@@ -65,19 +98,109 @@ export default function SpecView() {
         </p>
       </div>
 
+      {/* Dynamic Weight Configuration Section */}
+      <div className={`${darkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-100 text-slate-800"} rounded-xl p-4 border shadow-3xs space-y-3`} id="severity-weights-config">
+        <div className="flex items-center justify-between border-b border-slate-100/10 pb-2">
+          <h4 className="text-xs font-bold uppercase tracking-wide flex items-center space-x-1.5 font-sans">
+            <Settings className="h-4 w-4 text-indigo-500" />
+            <span>Risk Assessment Weight Policy</span>
+          </h4>
+          <span className={`font-mono text-[9px] font-bold px-2 py-0.5 rounded-full ${darkMode ? "bg-indigo-950 text-indigo-300" : "bg-indigo-50 text-indigo-850"}`}>
+            ACTIVE
+          </span>
+        </div>
+
+        <p className={`text-[11px] leading-relaxed font-sans ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
+          Organizations can tune risk category multipliers. Redefine risk metrics to match compliance requirements:
+        </p>
+
+        <form onSubmit={handleSaveWeights} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">
+                LOW Severity Weight
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={lowWeight}
+                onChange={(e) => setLowWeight(parseInt(e.target.value) || 0)}
+                className={`w-full text-xs p-1.5 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono ${
+                  darkMode ? "bg-slate-950 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-850"
+                }`}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">
+                MEDIUM Severity Weight
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={mediumWeight}
+                onChange={(e) => setMediumWeight(parseInt(e.target.value) || 0)}
+                className={`w-full text-xs p-1.5 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono ${
+                  darkMode ? "bg-slate-950 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-850"
+                }`}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">
+                HIGH Severity Weight
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={highWeight}
+                onChange={(e) => setHighWeight(parseInt(e.target.value) || 0)}
+                className={`w-full text-xs p-1.5 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono ${
+                  darkMode ? "bg-slate-950 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-850"
+                }`}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block mb-1">
+                CRITICAL Severity Weight
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={criticalWeight}
+                onChange={(e) => setCriticalWeight(parseInt(e.target.value) || 0)}
+                className={`w-full text-xs p-1.5 border rounded-lg focus:outline-none focus:border-indigo-500 font-mono ${
+                  darkMode ? "bg-slate-950 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-850"
+                }`}
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+          >
+            {isSaving ? "Updating Governance Policy..." : "Update Metric Weights"}
+          </button>
+        </form>
+      </div>
+
       {/* Engineering Memory Module Section */}
-      <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-3xs space-y-4" id="engineering-memory-section">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center space-x-1.5 font-sans">
+      <div className={`${darkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-100 text-slate-850"} rounded-xl p-4 border shadow-3xs space-y-4`} id="engineering-memory-section">
+        <div className="flex items-center justify-between border-b border-slate-100/10 pb-2">
+          <h4 className="text-xs font-bold uppercase tracking-wide flex items-center space-x-1.5 font-sans">
             <Database className="h-4 w-4 text-emerald-500" />
             <span>AEML Continuous Engineering Memory</span>
           </h4>
-          <span className="bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+          <span className="bg-emerald-950 text-emerald-400 font-mono text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse">
             CONNECTED
           </span>
         </div>
 
-        <p className="text-[11px] text-slate-500 leading-relaxed font-sans">
+        <p className={`text-[11px] leading-relaxed font-sans ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
           This module queries past incidents, architectural decisions (ADRs), and team ownership metadata dynamically, feeding them to the multi-role reviewer council to warn against regressions.
         </p>
 

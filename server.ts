@@ -140,21 +140,20 @@ const mockAlerts = [
   { id: "a3", type: "COMPLIANCE_HOLD", message: "SQL Injection vulnerabilities parsed in billing queries", timestamp: "2026-07-07T03:30:00Z", repo: "billing-service" }
 ];
 
+// Global severity weightings configuration
+let globalSeverityWeights: Record<string, number> = {
+  LOW: 3,
+  MEDIUM: 10,
+  HIGH: 20,
+  CRITICAL: 40
+};
+
 // Helper to calculate risk score from a set of issues
 function calculateRiskScore(issues: any[]) {
-  // Severity weightings matching open-spec:
-  // LOW = 3, MEDIUM = 10, HIGH = 20, CRITICAL = 40
-  const weights: Record<string, number> = {
-    LOW: 3,
-    MEDIUM: 10,
-    HIGH: 20,
-    CRITICAL: 40
-  };
-
   let totalWeight = 0;
   issues.forEach(issue => {
     const sev = (issue.severity || "LOW").toUpperCase();
-    totalWeight += (weights[sev] || 3);
+    totalWeight += (globalSeverityWeights[sev] !== undefined ? globalSeverityWeights[sev] : 3);
   });
 
   // Normalize weight to 0-100 scale.
@@ -176,8 +175,45 @@ app.get("/api/alerts", (req, res) => {
   res.json(mockAlerts);
 });
 
+app.get("/api/config", (req, res) => {
+  res.json({ severityWeights: globalSeverityWeights });
+});
+
+app.post("/api/config", (req, res) => {
+  const { severityWeights } = req.body;
+  if (severityWeights) {
+    globalSeverityWeights = {
+      LOW: parseInt(severityWeights.LOW) || 3,
+      MEDIUM: parseInt(severityWeights.MEDIUM) || 10,
+      HIGH: parseInt(severityWeights.HIGH) || 20,
+      CRITICAL: parseInt(severityWeights.CRITICAL) || 40
+    };
+    return res.json({ success: true, severityWeights: globalSeverityWeights });
+  }
+  res.status(400).json({ error: "Missing severityWeights in body." });
+});
+
 app.get("/api/reviews", (req, res) => {
-  res.json(engineeringMemory.getAllPastPRs());
+  const allReviews = engineeringMemory.getAllPastPRs();
+  
+  // If no page and no limit query is provided, return all reviews as an array
+  if (!req.query.page && !req.query.limit) {
+    return res.json(allReviews);
+  }
+
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 5;
+  const startIndex = (page - 1) * limit;
+  const endIndex = page * limit;
+  const paginatedData = allReviews.slice(startIndex, endIndex);
+
+  res.json({
+    data: paginatedData,
+    total: allReviews.length,
+    page,
+    limit,
+    totalPages: Math.ceil(allReviews.length / limit)
+  });
 });
 
 app.get("/api/memory", (req, res) => {

@@ -29,6 +29,7 @@ interface PullRequestViewProps {
   analysisResult: PullRequestDecision | null;
   loadingPrId: string | null;
   onBackToDashboard: () => void;
+  darkMode?: boolean;
 }
 
 export default function PullRequestView({ 
@@ -37,7 +38,8 @@ export default function PullRequestView({
   onTriggerCustomAnalysis,
   analysisResult, 
   loadingPrId,
-  onBackToDashboard
+  onBackToDashboard,
+  darkMode = false
 }: PullRequestViewProps) {
   const [selectedPr, setSelectedPr] = useState<PullRequest | null>(null);
   const [activeRoleTab, setActiveRoleTab] = useState<"backend" | "security" | "infrastructure">("backend");
@@ -591,25 +593,25 @@ index e234a5d..f82b71a 100644
 
   return (
     <div className="space-y-4" id="prs-list-view">
-      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+      <div className={`flex items-center justify-between pb-2 border-b ${darkMode ? "border-slate-800" : "border-slate-100"}`}>
         <div>
-          <h3 className="text-sm font-bold text-slate-800">Review Pull Requests</h3>
+          <h3 className={`text-sm font-bold ${darkMode ? "text-slate-200" : "text-slate-800"}`}>Review Pull Requests</h3>
           <p className="text-[10px] text-slate-400">Select active repository branch updates to evaluate</p>
         </div>
-        <span className="text-[11px] bg-indigo-50 text-indigo-600 font-mono font-bold px-2 py-0.5 rounded-full">
+        <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${darkMode ? "bg-indigo-950 text-indigo-300" : "bg-indigo-50 text-indigo-600"}`}>
           {prs.length} Awaiting
         </span>
       </div>
 
       {/* Interactive Custom Scan Trigger Card */}
-      <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3 shadow-3xs" id="custom-scanner-card">
+      <div className={`${darkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-slate-50 border-slate-200/60 text-slate-850"} rounded-xl p-4 space-y-3 shadow-3xs`} id="custom-scanner-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <span className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg">
+            <span className="p-1.5 bg-indigo-500/10 text-indigo-500 rounded-lg">
               <Terminal className="h-4 w-4" />
             </span>
             <div>
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">AST Diff Sandbox Scanner</h4>
+              <h4 className={`text-xs font-bold uppercase tracking-wide ${darkMode ? "text-white" : "text-slate-900"}`}>AST Diff Sandbox Scanner</h4>
               <p className="text-[10px] text-slate-400 font-sans">Audit and evaluate custom snippets with the council</p>
             </div>
           </div>
@@ -718,16 +720,24 @@ index e234a5d..f82b71a 100644
           <div 
             key={pr.id}
             onClick={() => handlePrClick(pr)}
-            className="bg-white rounded-xl p-4 border border-slate-100 shadow-2xs hover:border-indigo-100 transition-all cursor-pointer flex items-center justify-between"
+            className={`rounded-xl p-4 border transition-all cursor-pointer flex items-center justify-between ${
+              darkMode 
+                ? "bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-850" 
+                : "bg-white border-slate-100 shadow-2xs hover:border-indigo-100 hover:bg-slate-50/20"
+            }`}
           >
             <div className="space-y-1.5 flex-1 pr-3">
               <div className="flex items-center space-x-2">
                 <span className="text-xs text-indigo-500 font-mono font-bold">#{pr.id}</span>
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-1.5 py-0.2 rounded border">
+                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                  darkMode ? "bg-slate-950 border-slate-800 text-slate-400" : "bg-slate-50 border-slate-100 text-slate-500"
+                }`}>
                   {pr.repo}
                 </span>
               </div>
-              <h4 className="text-sm font-bold text-slate-900 leading-tight tracking-tight hover:text-indigo-600">
+              <h4 className={`text-sm font-bold leading-tight tracking-tight hover:text-indigo-500 ${
+                darkMode ? "text-white" : "text-slate-900"
+              }`}>
                 {pr.title}
               </h4>
               <div className="flex items-center space-x-2 text-[10px] text-slate-500">
