@@ -1,0 +1,100 @@
+name: AEML Governance Gatekeeper
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  aeml-review:
+    name: AEML Executive Review Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Git Diff
+        id: git_diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.patch
+          echo "DIFF_PATH=pr_diff.patch" >> $GITHUB_ENV
+
+      - name: Submit Diff to AEML Engine
+        id: aeml_submit
+        env:
+          AEML_ENDPOINT: ${{ secrets.AEML_SERVICE_URL || 'https://aeml.internal.org' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_REPO: ${{ github.repository }}
+        run: |
+          DIFF_CONTENT=$(cat pr_diff.patch | jq -sR .)
+          
+          PAYLOAD=$(jq -n \
+            --arg title "$PR_TITLE" \
+            --arg repo "$PR_REPO" \
+            --arg diff "$(cat pr_diff.patch)" \
+            '{customTitle: $title, customRepo: $repo, customDiff: $diff}')
+
+          RESPONSE=$(curl -s -X POST "$AEML_ENDPOINT/api/reviews/analyze" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "$RESPONSE" > response.json
+          VERDICT=$(jq -r '.verdict // "HOLD"' response.json)
+          SCORE=$(jq -r '.riskScore // 50' response.json)
+          SUMMARY=$(jq -r '.executiveSummary // "AEML evaluation complete."' response.json)
+
+          echo "VERDICT=$VERDICT" >> $GITHUB_OUTPUT
+          echo "SCORE=$SCORE" >> $GITHUB_OUTPUT
+          echo "SUMMARY=$SUMMARY" >> $GITHUB_OUTPUT
+
+      - name: Comment Executive Verdict on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const response = JSON.parse(fs.readFileSync('response.json', 'utf8'));
+            const verdict = response.verdict || 'HOLD';
+            const riskScore = response.riskScore || 0;
+            const summary = response.executiveSummary || '';
+            
+            let badge = '🟢 APPROVE';
+            if (verdict === 'BLOCK') badge = '🔴 BLOCK';
+            if (verdict === 'HOLD') badge = '🟡 HOLD';
+
+            const body = `## 🛡️ AEML Engineering Leadership Review
+            
+            **Verdict**: ${badge}
+            **Risk Score**: \`${riskScore}/100\`
+            
+            ### Executive Summary
+            ${summary}
+
+            ### Council Opinions:
+            - **Backend CTO**: ${response.backendCTO?.verdict} — ${response.backendCTO?.reasoning}
+            - **Security CTO**: ${response.securityCTO?.verdict} — ${response.securityCTO?.reasoning}
+            - **Infrastructure CTO**: ${response.infrastructureCTO?.verdict} — ${response.infrastructureCTO?.reasoning}
+
+            *Automated by AEML Governance Gatekeeper v0.1.0*
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Enforce Gatekeeper Verdict
+        run: |
+          VERDICT="${{ steps.aeml_submit.outputs.VERDICT }}"
+          if [ "$VERDICT" = "BLOCK" ]; then
+            echo "❌ AEML Council issued a BLOCK verdict. Halting pipeline merge."
+            exit 1
+          elif [ "$VERDICT" = "HOLD" ]; then
+            echo "⚠️ AEML Council issued a HOLD verdict. Manual management approval required."
+          else
+            echo "✅ AEML Council APPROVED code changes."
+          fi

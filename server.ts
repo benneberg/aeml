@@ -5,6 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { engineeringMemory } from "./server/engineeringMemory";
 import { roleReviewEngine } from "./server/roleReviewEngine";
+import { persistenceAdapter } from "./server/persistenceAdapter";
 
 dotenv.config();
 
@@ -148,6 +149,18 @@ let globalSeverityWeights: Record<string, number> = {
   CRITICAL: 40
 };
 
+// Hydrate from persistence adapter on startup
+const stored = persistenceAdapter.load();
+if (stored) {
+  if (stored.globalSeverityWeights) {
+    globalSeverityWeights = stored.globalSeverityWeights;
+  }
+  if (stored.mockPRs && Array.isArray(stored.mockPRs) && stored.mockPRs.length > 0) {
+    mockPRs.length = 0;
+    mockPRs.push(...stored.mockPRs);
+  }
+}
+
 // Helper to calculate risk score from a set of issues
 function calculateRiskScore(issues: any[]) {
   let totalWeight = 0;
@@ -188,6 +201,12 @@ app.post("/api/config", (req, res) => {
       HIGH: parseInt(severityWeights.HIGH) || 20,
       CRITICAL: parseInt(severityWeights.CRITICAL) || 40
     };
+    const current = persistenceAdapter.load() || {};
+    persistenceAdapter.save({
+      ...current,
+      globalSeverityWeights,
+      mockPRs
+    });
     return res.json({ success: true, severityWeights: globalSeverityWeights });
   }
   res.status(400).json({ error: "Missing severityWeights in body." });
@@ -319,6 +338,13 @@ app.post("/api/reviews/analyze", async (req, res) => {
         mockPRs[prIndex].status = finalVerdict === "APPROVE" ? "APPROVED" : finalVerdict === "HOLD" ? "HOLD" : "BLOCKED";
       }
     }
+
+    const current = persistenceAdapter.load() || {};
+    persistenceAdapter.save({
+      ...current,
+      mockPRs,
+      globalSeverityWeights
+    });
 
     res.json(generatedReview);
 

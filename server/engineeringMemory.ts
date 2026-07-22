@@ -1,4 +1,5 @@
 import { PullRequestDecision, RoleReview, Issue } from "../src/types";
+import { persistenceAdapter } from "./persistenceAdapter";
 
 export interface ServiceOwnership {
   repo: string;
@@ -42,6 +43,10 @@ class EngineeringMemory {
 
   constructor() {
     this.seedInitialData();
+    const stored = persistenceAdapter.load();
+    if (stored && Array.isArray(stored.pastPRs) && stored.pastPRs.length > 0) {
+      this.pastPRs = stored.pastPRs;
+    }
   }
 
   private seedInitialData() {
@@ -199,6 +204,11 @@ class EngineeringMemory {
   // Store newly processed PR details in Engineering Memory
   public recordPR(record: PullRequestDecision) {
     this.pastPRs.unshift(record);
+    const current = persistenceAdapter.load() || {};
+    persistenceAdapter.save({
+      ...current,
+      pastPRs: this.pastPRs
+    });
   }
 
   // Store new incident details in Engineering Memory
