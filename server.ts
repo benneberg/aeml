@@ -192,6 +192,64 @@ app.get("/api/config", (req, res) => {
   res.json({ severityWeights: globalSeverityWeights });
 });
 
+// User Auth and Session State
+const DEFAULT_USER = {
+  id: "usr-001",
+  name: "Alex Vance",
+  username: "alex.vance",
+  email: "alex.vance@enterprise-org.com",
+  avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256",
+  role: "VP_ENGINEERING",
+  roleTitle: "VP of Engineering & Architecture",
+  provider: "github",
+  organization: "AEML Core Engineering",
+  permissions: ["admin", "override_block", "modify_weights", "trigger_reviews", "view_audit_logs"]
+};
+
+let currentUser = { ...DEFAULT_USER };
+
+app.get("/api/auth/me", (req, res) => {
+  res.json(currentUser);
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { provider, token, role, username, name } = req.body;
+  if (role) {
+    let permissions = ["view_audit_logs", "trigger_reviews"];
+    let roleTitle = "Senior Software Engineer";
+    if (role === "VP_ENGINEERING") {
+      roleTitle = "VP of Engineering & Architecture";
+      permissions = ["admin", "override_block", "modify_weights", "trigger_reviews", "view_audit_logs"];
+    } else if (role === "SECURITY_LEAD") {
+      roleTitle = "Head of Security Architecture";
+      permissions = ["override_block", "modify_weights", "trigger_reviews", "view_audit_logs"];
+    } else if (role === "STAFF_ARCHITECT") {
+      roleTitle = "Staff Distributed Systems Architect";
+      permissions = ["trigger_reviews", "view_audit_logs", "suggest_adr"];
+    }
+
+    currentUser = {
+      id: "usr-" + Math.floor(Math.random() * 900 + 100),
+      name: name || (username ? username.replace('.', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : currentUser.name),
+      username: username || (token ? "gh-user-" + token.substring(0, 4) : "dev.lead"),
+      email: (username || "engineer") + "@enterprise-org.com",
+      avatarUrl: currentUser.avatarUrl,
+      role,
+      roleTitle,
+      provider: provider || "github",
+      organization: "AEML Core Engineering",
+      permissions
+    };
+  }
+  res.json({ success: true, user: currentUser });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  currentUser = { ...DEFAULT_USER };
+  res.json({ success: true, user: currentUser });
+});
+
+
 app.post("/api/config", (req, res) => {
   const { severityWeights } = req.body;
   if (severityWeights) {

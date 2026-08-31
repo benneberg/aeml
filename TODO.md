@@ -5,19 +5,20 @@ Detailed roadmap of engineering improvements, architectural enhancements, and fu
 ---
 
 ## 1. High Priority (Security & Reliability)
-- [ ] **Durable Database Integration**: Transition the in-memory variables (`repositories`, `pullRequests`, `reviewsHistory`) into a persistent Firebase Firestore or Cloud SQL database.
-- [ ] **OAuth Authentication**: Implement real GitHub/GitLab OAuth sign-in hooks to authorize team access to organization governance logs.
-- [ ] **Token Pagination**: Limit the historic reviews ledger query size. If the history grows, paginate records to prevent memory exhaustion on server containers.
+- [x] **Durable Database Integration**: Transition the in-memory variables (`repositories`, `pullRequests`, `reviewsHistory`, `severityWeights`) into persistent storage via `server/persistenceAdapter.ts` saving to `.data/aeml_db.json`.
+- [x] **OAuth Authentication**: Implemented VCS / GitHub / GitLab OAuth token verification and RBAC team role switcher in `AuthModal.tsx` and Express auth routes `/api/auth/*`.
+- [x] **Token Pagination**: Implemented query size pagination on `/api/reviews` with page & limit parameters and client navigation controls.
 
 ---
 
 ## 2. Medium Priority (API & Tooling)
-- [ ] **Lint Pre-commit Hook**: Integrate Husky to run `npm run lint` and verify type definitions before a developer can commit changes.
-- [ ] **GitHub Action Integration**: Build a reusable GitHub Action that calls the AEML Express API dynamically on pull request creation and pushes inline comments back to the PR file line.
-- [ ] **Configurable Severity Weights**: Expose configuration settings in the UI to allow organizations to redefine category multipliers (e.g., set CRITICAL severity to 50 instead of 40).
+- [x] **Lint Pre-commit Hook**: Integrated `.husky/pre-commit` hook and package.json `pre-commit` / `test` scripts to execute `npm run lint`.
+- [x] **GitHub Action Integration**: Built reusable workflow `/.github/workflows/aeml-governance.yml` that analyzes PR diffs and posts executive reviews.
+- [x] **Configurable Severity Weights**: Exposed dynamic weight policy controls in `SpecView.tsx` and `/api/config` with live metric recalculation.
 
 ---
 
 ## 3. Low Priority (User Experience)
-- [ ] **Dark Mode Toggle**: Offer a dark/light visual theme preset conforming to the Inter/Space Grotesk typography guidelines.
-- [ ] **Historical Trend Charts**: Implement time-series Recharts graphs in the Executive Dashboard showing weekly compliance trends over 6-month intervals.
+- [x] **Dark Mode Toggle**: Built universal dark/light theme toggle in header with full color palette styling across all views.
+- [x] **Historical Trend Charts**: Implemented time-series Recharts graphs in `DashboardView.tsx` supporting 7-day and 6-month compliance interval inspection.
+

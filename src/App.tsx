@@ -16,7 +16,8 @@ import DashboardView from "./components/DashboardView";
 import PullRequestView from "./components/PullRequestView";
 import HistoryView from "./components/HistoryView";
 import SpecView from "./components/SpecView";
-import { Repository, PullRequest, PullRequestDecision, SystemAlert, ExecutiveMetrics } from "./types";
+import AuthModal from "./components/AuthModal";
+import { Repository, PullRequest, PullRequestDecision, SystemAlert, ExecutiveMetrics, UserProfile } from "./types";
 // @ts-ignore
 import aemlLogo from "./assets/images/aeml_logo_1783466577231.jpg";
 
@@ -26,6 +27,10 @@ export default function App() {
 
   // Dark Mode global state
   const [darkMode, setDarkMode] = useState<boolean>(false);
+
+  // User Authentication & Session State
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Core domain states
   const [repositories, setRepositories] = useState<Repository[]>([]);
@@ -79,12 +84,13 @@ export default function App() {
   const fetchAllContext = async () => {
     try {
       setLoading(true);
-      const [reposRes, prsRes, alertsRes, metricsRes, configRes] = await Promise.all([
+      const [reposRes, prsRes, alertsRes, metricsRes, configRes, authRes] = await Promise.all([
         fetch("/api/repositories"),
         fetch("/api/pull-requests"),
         fetch("/api/alerts"),
         fetch("/api/metrics"),
-        fetch("/api/config")
+        fetch("/api/config"),
+        fetch("/api/auth/me")
       ]);
 
       const repos = await reposRes.json();
@@ -92,11 +98,15 @@ export default function App() {
       const alertList = await alertsRes.json();
       const metricList = await metricsRes.json();
       const configData = await configRes.json();
+      const authData = await authRes.json();
 
       setRepositories(repos);
       setPrs(prList);
       setAlerts(alertList);
       setMetrics(metricList);
+      if (authData && authData.id) {
+        setCurrentUser(authData);
+      }
 
       if (configData && configData.globalSeverityWeights) {
         setSeverityWeights(configData.globalSeverityWeights);
@@ -117,6 +127,42 @@ export default function App() {
   useEffect(() => {
     fetchAllContext();
   }, []);
+
+  // Authentication Handlers
+  const handleLogin = async (credentials: { role?: string; provider?: string; token?: string; username?: string }) => {
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      }
+    } catch (err) {
+      console.error("AEML: Login error: ", err);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      }
+    } catch (err) {
+      console.error("AEML: Logout error: ", err);
+    }
+  };
 
   // Update dynamic weights handler
   const handleUpdateWeights = async (newWeights: any) => {
@@ -228,6 +274,32 @@ export default function App() {
           </div>
 
           <div className="flex items-center space-x-1.5">
+            {/* User Profile / RBAC Trigger */}
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              title={currentUser ? `${currentUser.name} (${currentUser.roleTitle})` : "Team Access"}
+              className={`flex items-center space-x-1.5 pl-1.5 pr-2 py-1 rounded-full border transition-all cursor-pointer ${
+                darkMode 
+                  ? "bg-slate-900 border-slate-800 text-slate-200 hover:border-indigo-500" 
+                  : "bg-slate-50 border-slate-200 text-slate-750 hover:border-indigo-400"
+              }`}
+            >
+              {currentUser?.avatarUrl ? (
+                <img 
+                  src={currentUser.avatarUrl} 
+                  alt={currentUser.name} 
+                  className="h-4 w-4 rounded-full object-cover border border-indigo-500 shrink-0" 
+                />
+              ) : (
+                <div className="h-4 w-4 rounded-full bg-indigo-600 text-[9px] text-white flex items-center justify-center font-bold">
+                  A
+                </div>
+              )}
+              <span className="text-[10px] font-mono font-bold truncate max-w-[60px]">
+                {currentUser ? currentUser.username.split('.')[0] : "Auth"}
+              </span>
+            </button>
+
             <button
               onClick={() => setDarkMode(!darkMode)}
               title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
@@ -379,6 +451,16 @@ export default function App() {
         <div className={`hidden md:block ${darkMode ? "bg-slate-950" : "bg-white"} h-3 pb-2 shrink-0 z-20`}>
           <div className="w-32 h-1 bg-slate-700 rounded-full mx-auto"></div>
         </div>
+
+        {/* User Authentication & Access Control Modal */}
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          currentUser={currentUser}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          darkMode={darkMode}
+        />
 
       </div>
     </div>

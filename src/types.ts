@@ -68,3 +68,17 @@ export interface ExecutiveMetrics {
   activePRsCount: number;
   repositoryMetrics: Repository[];
 }
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  avatarUrl: string;
+  role: "VP_ENGINEERING" | "SECURITY_LEAD" | "STAFF_ARCHITECT" | "SENIOR_DEV";
+  roleTitle: string;
+  provider: "github" | "gitlab" | "enterprise_sso";
+  organization: string;
+  permissions: string[];
+}
+
