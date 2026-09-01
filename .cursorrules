@@ -1,0 +1,25 @@
+# AEML Governance Platform - Project Rules & Idioms
+
+## 1. Stack & Runtime
+- Language: TypeScript 5.7+ (Strict Mode enabled).
+- Runtime: Node.js 22 (ESM/CJS hybrid, bundling via esbuild + Vite).
+- Client: React 18, Tailwind CSS, Lucide React icons, Recharts for data visualizations.
+- Server: Express.js with JSON body parsing and static SPA fallback routing.
+
+## 2. TypeScript & Code Quality
+- Never use `any` when a specific interface, generic, or union type is known.
+- All domain interfaces must be defined and centralized in `src/types.ts`.
+- Always prefer named exports over default exports for utility modules and components.
+- Keep components modular: extract sub-components from primary views.
+
+## 3. Server & Architecture Security
+- API endpoints must always precede Vite/SPA wildcard static handlers.
+- Never expose API keys (such as `GEMINI_API_KEY`) to the browser client; proxy all requests through `/api/*` endpoints.
+- Ensure all mutations persist to disk via `server/persistenceAdapter.ts` using safe atomic writes.
+- Listen exclusively on host `0.0.0.0` and port `3000` to support container and ingress reverse proxies.
+
+## 4. UI & React Guidelines
+- Strictly use Tailwind CSS utility classes; avoid inline styles or standalone `.css` files.
+- All icons must be imported directly from `lucide-react`.
+- When animating or transitioning views, use `motion` from `motion/react`.
+- Support seamless Dark Mode styling using `darkMode` state and Tailwind dark variants.

@@ -1,0 +1,12 @@
+node_modules
+.data
+.git
+.github
+.husky
+dist
+.env
+.env.*
+*.log
+npm-debug.log*
+.DS_Store
+coverage

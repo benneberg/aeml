@@ -1,5 +1,12 @@
 # AI Engineering Manager Layer (AEML)
 
+[![CI Pipeline](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
+[![Node Version](https://img.shields.io/badge/Node.js-22_LTS-339933?style=flat-square&logo=nodedotjs&logoColor=white)](.nvmrc)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-3178C6?style=flat-square&logo=typescript&logoColor=white)](tsconfig.json)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](src/App.tsx)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS_v4-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white)](src/index.css)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
+
 AEML is an enterprise-grade engineering governance platform designed to simulate a senior engineering leadership organization. It evaluates pull requests and code changes against static patterns, architectural decisions (ADRs), and past incident history using a mixture of Gemini-powered multi-role reviews and local AST static heuristics.
 
 ---
